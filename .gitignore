@@ -12,3 +12,4 @@ htmlcov/
 *.tfstate
 *.tfstate.backup
 .agents
+skills-lock.json
