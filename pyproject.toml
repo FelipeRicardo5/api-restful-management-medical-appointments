@@ -1,0 +1,45 @@
+[project]
+name = "medical-appointments-api"
+version = "0.1.0"
+description = "API RESTful de Gerenciamento de Consultas Medicas - Lacrei Saude"
+authors = [{ name = "Felipe Ferreira", email = "felipe.ferreira@bsatech.io" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "django (>=5.1,<5.2)",
+    "djangorestframework (>=3.15,<3.16)",
+    "djangorestframework-simplejwt (>=5.3,<5.4)",
+    "psycopg2-binary (>=2.9,<3.0)",
+    "django-cors-headers (>=4.4,<5.0)",
+    "django-environ (>=0.11,<0.12)",
+    "django-filter (>=24.3,<25.0)",
+    "gunicorn (>=23.0,<24.0)",
+    "whitenoise (>=6.7,<7.0)",
+    "drf-spectacular (>=0.27,<0.28)",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.9"
+black = "^24.10.0"
+coverage = "^7.6.1"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = "/(\\.agents|migrations)/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations", ".agents", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
