@@ -1,0 +1,151 @@
+name: CD
+
+# Deploys to AWS ECS Fargate. Requires the Terraform infra under infra/ to
+# have been applied at least once (ECR repo, ECS cluster/services, RDS) and
+# the repository secrets/vars listed in README.md > "CI/CD" to be configured.
+# NOT wired to a live AWS account in this exercise - see README "Deploy flow".
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: "Existing ECR image tag to (re)deploy, e.g. production-abc1234. Leave empty to build from the current ref."
+        required: false
+        type: string
+
+permissions:
+  id-token: write # for OIDC auth to AWS
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: medical-appointments-api
+  ECS_CLUSTER: medapp-cluster
+
+jobs:
+  build-push:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.image_tag == '' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine environment and tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENVIRONMENT="production"
+          else
+            ENVIRONMENT="staging"
+          fi
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "value=${ENVIRONMENT}-${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          docker build -t "$REGISTRY/$ECR_REPOSITORY:$TAG" .
+          docker push "$REGISTRY/$ECR_REPOSITORY:$TAG"
+
+  deploy-staging:
+    needs: build-push
+    if: |
+      always() && !failure() && !cancelled() &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging'))
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Resolve image URI
+        id: image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag || needs.build-push.outputs.image_tag }}
+        run: |
+          REGISTRY=$(aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --query 'repositories[0].repositoryUri' --output text)
+          echo "uri=${REGISTRY}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition --task-definition medapp-staging \
+            --query taskDefinition > task-definition.json
+      - name: Render new task definition with the target image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: api
+          image: ${{ steps.image.outputs.uri }}
+      - name: Deploy to ECS (staging)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: medapp-staging
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  deploy-production:
+    needs: build-push
+    if: |
+      always() && !failure() && !cancelled() &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+    runs-on: ubuntu-latest
+    environment: production # configure required reviewers on this GitHub Environment for a manual approval gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Resolve image URI
+        id: image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag || needs.build-push.outputs.image_tag }}
+        run: |
+          REGISTRY=$(aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --query 'repositories[0].repositoryUri' --output text)
+          echo "uri=${REGISTRY}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition --task-definition medapp-production \
+            --query taskDefinition > task-definition.json
+      - name: Render new task definition with the target image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: api
+          image: ${{ steps.image.outputs.uri }}
+      - name: Deploy to ECS (production)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: medapp-production
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

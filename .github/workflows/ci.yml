@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+env:
+  POETRY_VERSION: "2.4.3"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install poetry==${{ env.POETRY_VERSION }}
+      - run: poetry install --no-root
+      - run: poetry run ruff check .
+      - run: poetry run black --check .
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: medical_appointments
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SECRET_KEY: ci-test-secret-key
+      DEBUG: "False"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/medical_appointments
+      JWT_SIGNING_KEY: ci-test-jwt-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install poetry==${{ env.POETRY_VERSION }}
+      - run: poetry install --no-root
+      - run: poetry run python manage.py test
+      - run: poetry run coverage run --source=apps manage.py test
+      - run: poetry run coverage report -m
