@@ -11,3 +11,4 @@ htmlcov/
 .terraform/
 *.tfstate
 *.tfstate.backup
+.agents
