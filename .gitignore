@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+db.sqlite3
+staticfiles/
+.env
+*.log
+.pytest_cache/
+htmlcov/
+.coverage
+.terraform/
+*.tfstate
+*.tfstate.backup
