@@ -91,6 +91,20 @@ bloco `environment` da task definition.
 |---|---|---|
 | `AWS_DEPLOY_ROLE_ARN` | Sim | ARN da role IAM assumida via OIDC. **Nao ha access key nem secret key no repositorio** — a autenticacao usa `permissions: id-token: write` + `aws-actions/configure-aws-credentials@v4`, com credenciais temporarias por execucao |
 
+Para o pipeline do Cloud Run (`cd-cloudrun.yml`), que e o que roda de ponta a
+ponta hoje:
+
+| Secret | Obrigatorio | Conteudo |
+|---|---|---|
+| `GCP_WIF_PROVIDER` | Sim | Provider do Workload Identity Federation, no formato `projects/<numero>/locations/global/workloadIdentityPools/github/providers/github-provider` |
+| `GCP_SERVICE_ACCOUNT` | Sim | E-mail da service account de deploy (`github-deployer@<projeto>.iam.gserviceaccount.com`) |
+| `GCP_PROJECT_ID` | Sim | ID do projeto GCP |
+
+Tambem OIDC, sem chave JSON de service account no repositorio. O provider e
+preso a **este** repositorio por `attribute-condition`, equivalente a restricao
+do `sub` na trust policy do lado AWS. Comandos de criacao em
+[DEPLOY-DEMO-CLOUD-RUN.md](DEPLOY-DEMO-CLOUD-RUN.md), secao "CI/CD".
+
 ### 4.2 GitHub Environments
 
 | Environment | Usado por | Configuracao recomendada |

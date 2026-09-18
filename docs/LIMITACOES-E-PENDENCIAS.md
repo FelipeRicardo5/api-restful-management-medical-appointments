@@ -12,7 +12,8 @@ Nada aqui esta apresentado como funcionando sem ter sido executado.
 | Suite automatizada + relatorio de cobertura | **Pronto e executado** | [COBERTURA-DE-TESTES.md](COBERTURA-DE-TESTES.md) |
 | Docker / docker-compose | **Pronto e executado** | build e `docker compose up` verificados localmente |
 | Pipeline CI (lint + testes + cobertura) | **Pronto**, executado no GitHub Actions | execucoes do workflow `CI` |
-| Pipeline CD (build, push ECR, deploy ECS, smoke test) | **Escrito, nunca executado contra AWS** | ver secao 2 |
+| Pipeline CD para AWS/ECS (`cd.yml`) | **Escrito, nunca executado contra AWS** | ver secao 2; gatilho por push desligado de proposito |
+| Pipeline CD para Cloud Run (`cd-cloudrun.yml`) | **Executa de ponta a ponta** | deploy + smoke test a cada push na `main` ([DEPLOY-DEMO-CLOUD-RUN.md](DEPLOY-DEMO-CLOUD-RUN.md)) |
 | Terraform (VPC/SG, ECR, RDS, ECS Fargate, ALB, Secrets Manager, SSM) | **Escrito e validado, nunca aplicado** | `terraform validate` e `terraform fmt -check` passam; `terraform apply` **nao** foi executado |
 | Ambientes staging e producao no ar | **Nao existem** | ver secao 2 |
 | Health check / observabilidade da aplicacao | **Pronto e testado** | endpoints e logs verificados localmente ([OBSERVABILIDADE.md](OBSERVABILIDADE.md)) |
@@ -27,11 +28,16 @@ diretas e honestas:
 
 1. **Nao existe link de staging nem de producao para apresentar.** Nenhum DNS de
    ALB foi gerado porque nenhum ALB foi criado.
-2. **O CD nunca rodou de ponta a ponta.** O workflow esta escrito e e coerente
-   com o Terraform (nomes de cluster, servico e repositorio ECR conferidos um a
-   um), mas *coerente no papel* nao e o mesmo que *executado*. Um primeiro
-   `apply` real quase certamente exporia ajustes de permissao IAM que so
-   aparecem em execucao.
+2. **O CD para ECS nunca rodou de ponta a ponta.** O workflow esta escrito e e
+   coerente com o Terraform (nomes de cluster, servico e repositorio ECR
+   conferidos um a um), mas *coerente no papel* nao e o mesmo que *executado*.
+   Um primeiro `apply` real quase certamente exporia ajustes de permissao IAM
+   que so aparecem em execucao. Por isso seu gatilho por push foi desligado: um
+   pipeline sem destino reportaria build vermelho a cada commit.
+
+   O pipeline que **roda de verdade** hoje e o `cd-cloudrun.yml`, que implanta
+   no ambiente de demonstracao. Ele comprova build, deploy, migrations, health
+   check e rollback num provedor real — mas em Cloud Run, nao em ECS.
 
 ### Custo, que e a razao pratica
 

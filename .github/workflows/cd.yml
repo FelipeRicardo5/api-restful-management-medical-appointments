@@ -5,9 +5,15 @@ name: CD
 # the repository secrets/vars listed in README.md > "CI/CD" to be configured.
 # NOT wired to a live AWS account in this exercise - see README "Deploy flow".
 
+# Trigger is workflow_dispatch ONLY, on purpose. This pipeline targets the
+# Terraform infrastructure under infra/, which has never been applied - there is
+# no AWS account for this challenge. Running it on every push would fail at the
+# credentials step and report a red build for a pipeline that is correct but has
+# nowhere to deploy. It becomes push-triggered the moment an AWS account exists:
+# restore the `push: branches: [develop, main]` block below.
+#
+# The pipeline that actually runs end to end today is cd-cloudrun.yml.
 on:
-  push:
-    branches: [develop, main]
   workflow_dispatch:
     inputs:
       environment:

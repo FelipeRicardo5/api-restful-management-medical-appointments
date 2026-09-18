@@ -112,9 +112,10 @@ Relatorio completo e o que cada teste verifica: [docs/COBERTURA-DE-TESTES.md](do
 ## CI/CD
 
 - **`.github/workflows/ci.yml`** — roda em todo PR e push para `develop`/`main`: `lint` (ruff + black --check) seguido de `test` (suite completa contra um container `postgres:16` de servico, mais relatorio de cobertura).
-- **`.github/workflows/cd.yml`** — build da imagem, push para ECR, e deploy no ECS Fargate. `push` em `develop` implanta em staging, `push` em `main` implanta em producao (atras de um GitHub Environment com aprovacao manual). Tambem aceita `workflow_dispatch` com um `image_tag` especifico para reimplantar uma imagem ja publicada (usado no rollback).
+- **`.github/workflows/cd-cloudrun.yml`** — **o pipeline de deploy que roda de ponta a ponta hoje.** Implanta no ambiente de demonstracao (Cloud Run) a cada push na `main`, com autenticacao via Workload Identity Federation (OIDC, sem chave estatica), smoke test pos-deploy em `/api/health/ready/` e rollback por revision via `workflow_dispatch`. Setup em [docs/DEPLOY-DEMO-CLOUD-RUN.md](docs/DEPLOY-DEMO-CLOUD-RUN.md).
+- **`.github/workflows/cd.yml`** — build da imagem, push para ECR, e deploy no ECS Fargate. `workflow_dispatch` com escolha de ambiente, ou `image_tag` especifico para reimplantar uma imagem ja publicada (usado no rollback). **O gatilho por push esta desligado de proposito:** a infra Terraform nunca foi aplicada, entao disparar a cada push apenas reportaria build vermelho num pipeline correto que nao tem onde implantar. Basta restaurar o bloco `push` comentado no arquivo quando houver conta AWS — ai `develop` implanta em staging e `main` em producao, atras de um GitHub Environment com aprovacao manual.
 
-Secrets/variaveis necessarios no repositorio GitHub: `AWS_DEPLOY_ROLE_ARN` (role assumida via OIDC — evita chaves de acesso longas-vividas). A lista completa de secrets, variaveis e permissoes IAM minimas esta em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md).
+Secrets/variaveis necessarios no repositorio GitHub: `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT` e `GCP_PROJECT_ID` para o pipeline do Cloud Run; `AWS_DEPLOY_ROLE_ARN` (role assumida via OIDC — evita chaves de acesso longas-vividas). A lista completa de secrets, variaveis e permissoes IAM minimas esta em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md).
 
 Onde encontrar as evidencias de cada execucao (relatorio de cobertura, tag publicada, revisao da task definition, smoke test pos-deploy, aprovacao de producao): [docs/DEPLOY-E-ROLLBACK.md](docs/DEPLOY-E-ROLLBACK.md).
 

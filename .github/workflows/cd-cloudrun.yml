@@ -1,0 +1,101 @@
+name: CD (Cloud Run)
+
+# Deploys the demo environment to Google Cloud Run. This is the pipeline that
+# runs end to end today - the AWS/ECS pipeline (cd.yml) targets Terraform infra
+# that has never been applied, so it is manual-only.
+#
+# Proves: the application, the Docker image, migrations and health checks
+# running in the cloud behind real HTTPS. Does NOT prove the Terraform or ECS
+# work - see docs/LIMITACOES-E-PENDENCIAS.md.
+#
+# Auth uses Workload Identity Federation (OIDC), the same posture as the AWS
+# pipeline: no long-lived service account key is stored in the repository.
+# Setup commands: docs/DEPLOY-DEMO-CLOUD-RUN.md, section "CI/CD".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback_to_revision:
+        description: "Revision to send 100% of traffic to (e.g. medapp-api-00003-abc). Leave empty to deploy the current ref."
+        required: false
+        type: string
+
+permissions:
+  id-token: write # required for Workload Identity Federation
+  contents: read
+
+env:
+  SERVICE: medapp-api
+  REGION: us-east1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # --- Rollback path: no build, just shift traffic to an existing revision.
+      # Cloud Run revisions are immutable, so this is deterministic in the same
+      # way redeploying an immutable ECR tag is.
+      - name: Rollback to an existing revision
+        if: ${{ inputs.rollback_to_revision != '' }}
+        run: |
+          gcloud run services update-traffic "$SERVICE" \
+            --region "$REGION" \
+            --to-revisions "${{ inputs.rollback_to_revision }}=100"
+
+      # --- Deploy path: build from the Dockerfile and roll out.
+      - name: Deploy to Cloud Run
+        if: ${{ inputs.rollback_to_revision == '' }}
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --region "$REGION" \
+            --port 8000 \
+            --allow-unauthenticated \
+            --set-env-vars "DEBUG=False,ALLOWED_HOSTS=.run.app,USE_X_FORWARDED_PROTO=True,SECURE_SSL_REDIRECT=True,DJANGO_LOG_LEVEL=INFO" \
+            --set-secrets "SECRET_KEY=medapp-secret-key:latest,JWT_SIGNING_KEY=medapp-jwt-key:latest,DATABASE_URL=medapp-database-url:latest"
+
+      - name: Resolve service URL
+        id: url
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          echo "value=$URL" >> "$GITHUB_OUTPUT"
+          echo "Service URL: $URL"
+
+      # Readiness, not liveness: after a deploy the question is whether the app
+      # can actually serve traffic end to end, database included. Failing here
+      # fails the job, so a broken rollout is never reported as success.
+      - name: Smoke test
+        env:
+          URL: ${{ steps.url.outputs.value }}
+        run: |
+          for attempt in $(seq 1 10); do
+            CODE=$(curl -s -o /tmp/body.json -w '%{http_code}' "$URL/api/health/ready/" || echo 000)
+            echo "attempt $attempt -> HTTP $CODE $(cat /tmp/body.json 2>/dev/null)"
+            if [ "$CODE" = "200" ]; then
+              {
+                echo "### Deploy OK"
+                echo
+                echo "- URL: $URL"
+                echo "- Health: \`$URL/api/health/ready/\` respondeu 200"
+                echo "- Docs: $URL/api/docs/"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Smoke test FAILED: /api/health/ready/ never returned 200" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

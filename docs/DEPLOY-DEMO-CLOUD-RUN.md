@@ -243,6 +243,84 @@ ainda assim, vale definir um **orcamento com alerta em US$ 1** em
 <https://console.cloud.google.com/billing/budgets> para garantir que nenhuma
 surpresa passe despercebida.
 
+## CI/CD — deploy automatico a cada push
+
+O workflow `.github/workflows/cd-cloudrun.yml` implanta neste ambiente a cada
+push na `main`. A autenticacao usa **Workload Identity Federation (OIDC)**,
+mesma postura do pipeline da AWS: nenhuma chave de service account fica
+guardada no repositorio.
+
+Rode os blocos abaixo **uma unica vez**, depois do Bloco 4 (o servico precisa
+existir antes).
+
+### Bloco A — Service account do deploy
+
+```bash
+export REPO="FelipeRicardo5/api-restful-management-medical-appointments"
+export SA_NAME="github-deployer"
+
+gcloud iam service-accounts create "$SA_NAME" --display-name="GitHub Actions deployer"
+
+export SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+for ROLE in roles/run.admin roles/cloudbuild.builds.editor roles/artifactregistry.admin roles/storage.admin roles/iam.serviceAccountUser; do gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:${SA_EMAIL}" --role="$ROLE" --condition=None; done
+```
+
+### Bloco B — Workload Identity Federation
+
+```bash
+gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions"
+
+gcloud iam workload-identity-pools providers create-oidc github-provider --location=global --workload-identity-pool=github --display-name="GitHub provider" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" --attribute-condition="assertion.repository=='${REPO}'" --issuer-uri="https://token.actions.githubusercontent.com"
+
+export POOL_ID="$(gcloud iam workload-identity-pools describe github --location=global --format='value(name)')"
+
+gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --role="roles/iam.workloadIdentityUser" --member="principalSet://iam.googleapis.com/${POOL_ID}/attribute.repository/${REPO}"
+```
+
+> O `attribute-condition` prende a federacao a **este** repositorio. Sem ele,
+> qualquer repositorio do GitHub poderia assumir a service account — e o
+> equivalente ao cuidado com o `sub` da trust policy no lado AWS.
+
+### Bloco C — Secrets no GitHub
+
+```bash
+echo "GCP_WIF_PROVIDER    = ${POOL_ID}/providers/github-provider"
+echo "GCP_SERVICE_ACCOUNT = ${SA_EMAIL}"
+echo "GCP_PROJECT_ID      = ${PROJECT_ID}"
+```
+
+Cadastre os tres em **Settings > Secrets and variables > Actions > New
+repository secret**, com exatamente esses nomes. Ou, com o `gh` CLI instalado:
+
+```bash
+gh secret set GCP_WIF_PROVIDER    --body "${POOL_ID}/providers/github-provider"
+gh secret set GCP_SERVICE_ACCOUNT --body "$SA_EMAIL"
+gh secret set GCP_PROJECT_ID      --body "$PROJECT_ID"
+```
+
+### Bloco D — Disparar e verificar
+
+```bash
+git commit --allow-empty -m "ci: trigger first Cloud Run deploy"
+git push
+```
+
+Acompanhe em **Actions > CD (Cloud Run)**. Ao final, o **Summary** da execucao
+traz a URL do servico, a confirmacao do health check e o link da documentacao
+interativa — essa e a evidencia de pipeline verde ponta a ponta.
+
+### Rollback pelo pipeline
+
+```bash
+gcloud run revisions list --service "$SERVICE" --region "$REGION"
+```
+
+Em **Actions > CD (Cloud Run) > Run workflow**, preencha
+`rollback_to_revision` com a revision desejada. O job pula o build e apenas
+redireciona 100% do trafego — determinista, porque revisions do Cloud Run sao
+imutaveis, do mesmo modo que as tags imutaveis do ECR no pipeline da AWS.
+
 ## Diferencas em relacao a arquitetura AWS
 
 | Aspecto | AWS (Terraform, alvo) | Cloud Run (demonstracao) |
