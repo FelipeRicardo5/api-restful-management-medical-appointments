@@ -43,3 +43,24 @@ extend-exclude = ["migrations", ".agents", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[tool.coverage.run]
+source = ["apps"]
+branch = true
+omit = [
+    "*/migrations/*",
+    "*/tests.py",
+    "*/apps.py",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# Ratchet: raise this as coverage grows; never lower it to make CI pass.
+fail_under = 95
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

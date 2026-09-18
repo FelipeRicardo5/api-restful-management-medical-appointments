@@ -13,3 +13,5 @@ htmlcov/
 *.tfstate.backup
 .agents
 skills-lock.json
+coverage.xml
+.ruff_cache/

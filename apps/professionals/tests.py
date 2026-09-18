@@ -85,16 +85,35 @@ class HealthProfessionalValidationTests(APITestCase):
         for field in ("nome_social", "profissao", "endereco", "contato"):
             self.assertIn(field, response.data)
 
-    def test_create_blank_nome_social_returns_400(self):
+    def _post_with(self, **overrides):
         payload = {
-            "nome_social": "   ",
+            "nome_social": "Alex Souza",
             "profissao": "Enfermagem",
             "endereco": "Rua 1",
             "contato": "x@example.com",
         }
-        response = self.client.post(self.list_url, payload)
+        return self.client.post(self.list_url, {**payload, **overrides})
+
+    def test_create_blank_nome_social_returns_400(self):
+        response = self._post_with(nome_social="   ")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("nome_social", response.data)
+
+    def test_create_blank_profissao_returns_400(self):
+        response = self._post_with(profissao="   ")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("profissao", response.data)
+
+    def test_create_blank_contato_returns_400(self):
+        response = self._post_with(contato="   ")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("contato", response.data)
+
+    def test_surrounding_whitespace_is_stripped_on_create(self):
+        response = self._post_with(nome_social="  Jordan Lima  ", profissao="  Clinico  ")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["nome_social"], "Jordan Lima")
+        self.assertEqual(response.data["profissao"], "Clinico")
 
 
 class HealthProfessionalAuthTests(APITestCase):
@@ -104,3 +123,14 @@ class HealthProfessionalAuthTests(APITestCase):
     def test_list_without_authentication_returns_401(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class HealthProfessionalModelTests(APITestCase):
+    def test_str_representation(self):
+        professional = HealthProfessional.objects.create(
+            nome_social="Alex Souza",
+            profissao="Psicologia",
+            endereco="Rua das Flores, 100",
+            contato="alex@example.com",
+        )
+        self.assertEqual(str(professional), "Alex Souza (Psicologia)")

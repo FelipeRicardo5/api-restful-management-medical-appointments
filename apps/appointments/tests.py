@@ -131,3 +131,17 @@ class AppointmentAuthTests(APITestCase):
     def test_list_without_authentication_returns_401(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class AppointmentModelTests(APITestCase):
+    def test_str_representation_includes_professional_and_date(self):
+        professional = HealthProfessional.objects.create(
+            nome_social="Alex Souza",
+            profissao="Psicologia",
+            endereco="Rua das Flores, 100",
+            contato="alex@example.com",
+        )
+        when = timezone.now() + timedelta(days=1)
+        appointment = Appointment.objects.create(profissional=professional, data=when)
+
+        self.assertEqual(str(appointment), f"{professional} - {when}")
