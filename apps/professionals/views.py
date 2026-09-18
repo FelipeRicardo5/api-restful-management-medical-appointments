@@ -33,7 +33,5 @@ class HealthProfessionalViewSet(viewsets.ModelViewSet):
         professional = self.get_object()
         queryset = professional.appointments.all()
         page = self.paginate_queryset(queryset)
-        serializer = AppointmentSerializer(page or queryset, many=True)
-        if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+        serializer = AppointmentSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
