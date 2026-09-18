@@ -32,6 +32,10 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Required for SIMPLE_JWT["BLACKLIST_AFTER_ROTATION"] to do anything:
+    # SimpleJWT only mixes in blacklist behaviour when this app is installed,
+    # so without it a rotated refresh token stayed valid for its full lifetime.
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -107,6 +111,14 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Security -----------------------------------------------------------
+
+# Behind a TLS-terminating proxy (ALB, Cloud Run) the request reaches the app
+# over plain HTTP, so Django sees is_secure() == False and SECURE_SSL_REDIRECT
+# would redirect forever. Trusting X-Forwarded-Proto fixes that - but only when
+# the app really is behind such a proxy: if it is reachable directly, a client
+# could forge the header and fake HTTPS. Hence opt-in, never on by default.
+if env.bool("USE_X_FORWARDED_PROTO", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=False)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=not DEBUG)
