@@ -1,0 +1,21 @@
+Name                                Stmts   Miss Branch BrPart  Cover   Missing
+-------------------------------------------------------------------------------
+apps\appointments\admin.py              6      0      0      0   100%
+apps\appointments\models.py            11      0      0      0   100%
+apps\appointments\serializers.py       13      0      2      0   100%
+apps\appointments\urls.py               5      0      0      0   100%
+apps\appointments\views.py              7      0      0      0   100%
+apps\core\admin.py                      0      0      0      0   100%
+apps\core\exceptions.py                13      0      4      0   100%
+apps\core\middleware.py                12      0      0      0   100%
+apps\core\models.py                     0      0      0      0   100%
+apps\core\pagination.py                 5      0      0      0   100%
+apps\core\urls.py                       3      0      0      0   100%
+apps\core\views.py                     27      0      0      0   100%
+apps\professionals\admin.py             6      0      0      0   100%
+apps\professionals\models.py           12      0      0      0   100%
+apps\professionals\serializers.py       7      0      0      0   100%
+apps\professionals\urls.py              5      0      0      0   100%
+apps\professionals\views.py            22      0      0      0   100%
+-------------------------------------------------------------------------------
+TOTAL                                 154      0      6      0   100%

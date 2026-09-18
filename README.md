@@ -2,6 +2,25 @@
 
 API RESTful para cadastro de profissionais de saude e consultas medicas, construida com Django + Django REST Framework como desafio tecnico (Lacrei Saude). Prioriza seguranca dos dados, boas praticas de desenvolvimento e preparacao para producao.
 
+## Documentacao
+
+Detalhamento por tema, em `docs/`:
+
+| Documento | Conteudo |
+|---|---|
+| [Configuracao](docs/CONFIGURACAO.md) | Secrets, variaveis e configuracoes necessarias por ambiente, e onde cada uma vive |
+| [Seguranca](docs/SEGURANCA.md) | Checklist por ambiente: DEBUG, CORS, autenticacao, gestao de secrets, exposicao do banco, producao |
+| [Observabilidade](docs/OBSERVABILIDADE.md) | Logs, health checks, metricas, monitoramento e como consultar na AWS |
+| [Deploy e rollback](docs/DEPLOY-E-ROLLBACK.md) | Pipelines, onde ficam as evidencias e rollback passo a passo |
+| [Cobertura de testes](docs/COBERTURA-DE-TESTES.md) | Relatorio de cobertura e o que cada teste verifica |
+| [Limitacoes e pendencias](docs/LIMITACOES-E-PENDENCIAS.md) | O que nao esta pronto, por que, e melhorias futuras de regras de negocio |
+| [Deploy de demonstracao](docs/DEPLOY-DEMO-CLOUD-RUN.md) | Ambiente publico gratuito (Cloud Run + Neon), com HTTPS, para demonstrar a API rodando |
+
+> **Estado dos ambientes AWS:** o Terraform foi validado mas **nao aplicado**, e
+> nao ha staging nem producao no ar — nao houve conta AWS disponivel para este
+> desafio. O que isso implica (e o que custaria para produzir as evidencias)
+> esta detalhado em [Limitacoes e pendencias](docs/LIMITACOES-E-PENDENCIAS.md).
+
 ## Stack
 
 - Python 3.12, Django 5.1, Django REST Framework
@@ -71,6 +90,8 @@ Crie um usuario com `manage.py createsuperuser` ou `manage.py shell` (`User.obje
 | GET/PUT/PATCH/DELETE | `/api/appointments/{id}/` | detalhe / editar / excluir |
 | POST | `/api/token/`, `/api/token/refresh/` | obter / renovar JWT |
 | GET | `/api/docs/`, `/api/redoc/` | documentacao interativa (Swagger/Redoc) |
+| GET | `/api/health/` | liveness (publico) - usado pelo health check do ALB |
+| GET | `/api/health/ready/` | readiness (publico) - verifica conexao com o banco; `503` se indisponivel |
 
 Excluir um profissional que possui consultas vinculadas retorna `409 Conflict` (protegido via `on_delete=PROTECT`).
 
@@ -78,19 +99,24 @@ Excluir um profissional que possui consultas vinculadas retorna `409 Conflict` (
 
 ```bash
 poetry run python manage.py test
-# com cobertura:
-poetry run coverage run --source=apps manage.py test
+# com cobertura (configuracao em [tool.coverage.*] no pyproject.toml):
+poetry run coverage run manage.py test
 poetry run coverage report -m
+poetry run coverage html   # relatorio navegavel em htmlcov/
 ```
 
-28 testes (`APITestCase`) cobrindo CRUD de profissionais e consultas, autenticacao JWT (obtencao/renovacao/rejeicao), busca de consultas por profissional, e casos de erro (payload invalido, IDs inexistentes, exclusao bloqueada por integridade referencial). Os testes rodam contra um Postgres real (nunca SQLite/mocks), tanto localmente quanto no CI, para manter paridade com producao.
+**39 testes (`APITestCase`), 100% de cobertura de linhas e branches.** Cobrem CRUD de profissionais e consultas, autenticacao JWT (obtencao/renovacao/rejeicao/blacklist na rotacao), health checks, tratamento de erro 5xx, busca de consultas por profissional, e casos de erro (payload invalido, IDs inexistentes, exclusao bloqueada por integridade referencial). Os testes rodam contra um Postgres real (nunca SQLite/mocks), tanto localmente quanto no CI, para manter paridade com producao.
+
+Relatorio completo e o que cada teste verifica: [docs/COBERTURA-DE-TESTES.md](docs/COBERTURA-DE-TESTES.md).
 
 ## CI/CD
 
 - **`.github/workflows/ci.yml`** — roda em todo PR e push para `develop`/`main`: `lint` (ruff + black --check) seguido de `test` (suite completa contra um container `postgres:16` de servico, mais relatorio de cobertura).
 - **`.github/workflows/cd.yml`** — build da imagem, push para ECR, e deploy no ECS Fargate. `push` em `develop` implanta em staging, `push` em `main` implanta em producao (atras de um GitHub Environment com aprovacao manual). Tambem aceita `workflow_dispatch` com um `image_tag` especifico para reimplantar uma imagem ja publicada (usado no rollback).
 
-Secrets/variaveis necessarios no repositorio GitHub: `AWS_DEPLOY_ROLE_ARN` (role assumida via OIDC — evita chaves de acesso longas-vividas).
+Secrets/variaveis necessarios no repositorio GitHub: `AWS_DEPLOY_ROLE_ARN` (role assumida via OIDC — evita chaves de acesso longas-vividas). A lista completa de secrets, variaveis e permissoes IAM minimas esta em [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md).
+
+Onde encontrar as evidencias de cada execucao (relatorio de cobertura, tag publicada, revisao da task definition, smoke test pos-deploy, aprovacao de producao): [docs/DEPLOY-E-ROLLBACK.md](docs/DEPLOY-E-ROLLBACK.md).
 
 ## Deploy (AWS)
 
@@ -144,6 +170,10 @@ Duas formas, ambas documentadas para uso imediato em incidentes:
    ```
    Fica registrado no historico de Actions quem disparou o rollback e quando.
 
+Como as tags do ECR sao imutaveis (`image_tag_mutability = "IMMUTABLE"`), reimplantar uma tag anterior e deterministico — nao ha rebuild, a mesma imagem volta ao ar.
+
+Procedimento completo, com os comandos de cada passo, validacao pos-rollback, tempos esperados e o que o rollback de imagem **nao** desfaz (migrations de banco): [docs/DEPLOY-E-ROLLBACK.md](docs/DEPLOY-E-ROLLBACK.md).
+
 ## Justificativas tecnicas
 
 - **JWT em vez de API Key/token simples**: suporta expiracao curta de access token + refresh, revogacao via blacklist, e e o padrao de fato para APIs REST publicas — mais defensavel como "producao-ready" que um header de API Key estatico.
@@ -165,7 +195,9 @@ Nao implementada em codigo neste desafio — proposta arquitetural:
 
 ## Decisoes, limitacoes e melhorias futuras
 
-- Terraform em `infra/` foi validado (`terraform validate`, `fmt`) mas **nao aplicado** — nao havia conta/credenciais AWS disponiveis no ambiente de desenvolvimento deste desafio. Um usuario com acesso real segue os passos em "Deploy (AWS)" acima.
+- Terraform em `infra/` foi validado (`terraform validate`, `fmt`) mas **nao aplicado**, e o CD **nunca foi executado contra uma conta AWS real** — nao havia conta/credenciais AWS disponiveis neste desafio. Nao ha, portanto, link de staging nem de producao para apresentar. O estado item a item, o custo estimado dos ambientes e o roteiro para produzir as evidencias estao em [docs/LIMITACOES-E-PENDENCIAS.md](docs/LIMITACOES-E-PENDENCIAS.md).
+- Pendencias de seguranca declaradas (principalmente **ausencia de TLS/HTTPS no ALB** e de rate limiting): [docs/SEGURANCA.md](docs/SEGURANCA.md).
+- Melhorias futuras de regras de negocio (conflito de horario, timezone, duracao e status da consulta): [docs/LIMITACOES-E-PENDENCIAS.md](docs/LIMITACOES-E-PENDENCIAS.md), secao 4.
 - `django-environ` com um unico `settings.py` foi escolhido por simplicidade; em um time maior, `settings/base.py` + overrides por ambiente pode ser preferivel para configuracoes que divergem estruturalmente (nao so por valor) entre ambientes.
 - Nao ha rate limiting nem MFA na autenticacao — razoavel para o escopo do desafio, mas seria a proxima adicao de seguranca antes de um lancamento real (`django-ratelimit` ou throttling nativo do DRF).
 - A busca de consultas por profissional esta disponivel tanto como filtro (`?profissional=<id>`) quanto como rota aninhada (`/professionals/{id}/appointments/`) — redundante de proposito, para cobrir tanto integradores que preferem query params quanto os que preferem rotas RESTful aninhadas.

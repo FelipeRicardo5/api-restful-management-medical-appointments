@@ -1,0 +1,21 @@
+# Saida de `manage.py check --deploy` com a configuracao de PRODUCAO.
+#
+# Reproduzido com as mesmas variaveis que a task definition ECS injeta
+# (DEBUG=False, SECRET_KEY/JWT_SIGNING_KEY do Secrets Manager,
+# ALLOWED_HOSTS=*.elb.amazonaws.com). Os cookies seguros sao True por default
+# no container, ja que .env esta no .dockerignore e as variaveis
+# SESSION_COOKIE_SECURE/CSRF_COOKIE_SECURE nao sao definidas em producao,
+# caindo no default `not DEBUG`.
+#
+# Os 2 warnings restantes sao ambos consequencia da mesma pendencia:
+# ausencia de TLS no ALB. Ver docs/SEGURANCA.md secao 6.
+#
+# Executado em 18/09/2026.
+
+System check identified some issues:
+
+WARNINGS:
+?: (security.W004) You have not set a value for the SECURE_HSTS_SECONDS setting. If your entire site is served only over SSL, you may want to consider setting a value and enabling HTTP Strict Transport Security. Be sure to read the documentation first; enabling HSTS carelessly can cause serious, irreversible problems.
+?: (security.W008) Your SECURE_SSL_REDIRECT setting is not set to True. Unless your site should be available over both SSL and non-SSL connections, you may want to either set this setting True or configure a load balancer or reverse-proxy server to redirect all connections to HTTPS.
+
+System check identified 2 issues (0 silenced).
