@@ -19,8 +19,13 @@ resource "aws_lb_target_group" "this" {
   vpc_id      = var.vpc_id
   target_type = "ip"
 
+  # Liveness, not readiness: /api/health/ touches no external dependency, so
+  # a transient RDS failover cannot mark every task unhealthy and drain the
+  # whole service. Database reachability is checked by /api/health/ready/,
+  # called as a post-deploy smoke test by .github/workflows/cd.yml.
   health_check {
-    path                = "/api/schema/"
+    path                = "/api/health/"
+    matcher             = "200"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 30

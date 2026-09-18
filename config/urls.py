@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/", include("apps.core.urls")),
     path("api/", include("apps.professionals.urls")),
     path("api/", include("apps.appointments.urls")),
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
