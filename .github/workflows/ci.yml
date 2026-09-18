@@ -51,6 +51,35 @@ jobs:
           python-version: "3.12"
       - run: pip install poetry==${{ env.POETRY_VERSION }}
       - run: poetry install --no-root
-      - run: poetry run python manage.py test
-      - run: poetry run coverage run --source=apps manage.py test
-      - run: poetry run coverage report -m
+
+      # One run, not two: `coverage run` executes the same suite, so running
+      # `manage.py test` separately just doubled CI time for no extra signal.
+      - name: Run tests with coverage
+        run: poetry run coverage run manage.py test --verbosity 2
+
+      - name: Coverage report
+        run: |
+          poetry run coverage report -m
+          poetry run coverage xml
+          poetry run coverage html
+
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Cobertura de testes"
+            echo
+            echo '```'
+            poetry run coverage report -m
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            htmlcov/
+            coverage.xml
+          retention-days: 30

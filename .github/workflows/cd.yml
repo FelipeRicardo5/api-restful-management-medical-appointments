@@ -26,8 +26,8 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: medical-appointments-api
-  ECS_CLUSTER: medapp-cluster
+  # Must match Terraform: modules/ecr repository_name = "${var.project}-api".
+  ECR_REPOSITORY: medapp-api
 
 jobs:
   build-push:
@@ -107,8 +107,26 @@ jobs:
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
           service: medapp-staging
-          cluster: ${{ env.ECS_CLUSTER }}
+          cluster: medapp-staging-cluster
           wait-for-service-stability: true
+
+      - name: Smoke test (post-deploy)
+        env:
+          ALB_NAME: medapp-staging-alb
+        run: |
+          DNS=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].DNSName' --output text)
+          echo "Checking http://$DNS/api/health/ready/"
+          for attempt in $(seq 1 10); do
+            CODE=$(curl -s -o /tmp/body.json -w '%{http_code}' "http://$DNS/api/health/ready/" || echo 000)
+            echo "attempt $attempt -> HTTP $CODE $(cat /tmp/body.json 2>/dev/null)"
+            if [ "$CODE" = "200" ]; then
+              echo "Smoke test passed" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Smoke test FAILED: /api/health/ready/ never returned 200" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
   deploy-production:
     needs: build-push
@@ -147,5 +165,23 @@ jobs:
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
           service: medapp-production
-          cluster: ${{ env.ECS_CLUSTER }}
+          cluster: medapp-production-cluster
           wait-for-service-stability: true
+
+      - name: Smoke test (post-deploy)
+        env:
+          ALB_NAME: medapp-production-alb
+        run: |
+          DNS=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].DNSName' --output text)
+          echo "Checking http://$DNS/api/health/ready/"
+          for attempt in $(seq 1 10); do
+            CODE=$(curl -s -o /tmp/body.json -w '%{http_code}' "http://$DNS/api/health/ready/" || echo 000)
+            echo "attempt $attempt -> HTTP $CODE $(cat /tmp/body.json 2>/dev/null)"
+            if [ "$CODE" = "200" ]; then
+              echo "Smoke test passed" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Smoke test FAILED: /api/health/ready/ never returned 200" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
